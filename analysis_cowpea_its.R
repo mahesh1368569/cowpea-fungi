@@ -35,6 +35,7 @@ library(colorspace)
 library(ComplexHeatmap)
 library(circlize)
 library(vegan)
+library(ggraph)
 
 # ---- Statistical modeling ----
 library(lme4)
@@ -56,7 +57,17 @@ save.image("ITS-Drought-Cowpea.RData")
 
 load("ITS-Drought-Cowpea.RData")
 
-its_colors_set = c("#f15a60","#7ac36a","#5a9bda","#faa75b","#faa","#9e76ab", "#c37508","#d77fba")
+its_colors_set <- c(
+  "#f15a60","#7ac36a","#5a9bda","#faa75b","#ffaaaa",
+  "#9e76ab","#c37508","#d77fba",
+  "#4bc0c8","#f7c873","#74c2e1","#e07b39","#6cc27c",
+  "#c66a9e","#a6b75d","#5b6dd1","#ff8f9f","#b87ec9",
+  "#4fa6b7","#d4944a","#76a8dc","#8ccf9f","#e68ac3",
+  "#e6a157","#64b5af","#9d84d7","#ffb55e","#6fb3d2",
+  "#b55d72","#7ccfcb","#d37f6f","#89c56f","#ce7dcf"
+)
+
+
 
 ##### Importing files ########
 
@@ -144,8 +155,8 @@ genotype_network %<>% get_node_table(node_roles = TRUE) %>% get_edge_table
 #1.3 Network topological attributes for all networks
 network_atr_trt = cal_network_attr(cowpea_network)
 network_atr_gen = cal_network_attr(genotype_network)
-write.csv(network_atr_trt, "network_attributes_drought.csv")
-write.csv(network_atr_gen, "network_attributes_genotype.csv")
+write.csv(network_atr_trt, "Output/data files/network_attributes_drought.csv")
+write.csv(network_atr_gen, "Output/data files/network_attributes_genotype.csv")
 
 #1.4 Network plotting #
 
@@ -155,11 +166,11 @@ es4 = genotype_network[["ES4"]]$plot_network(method = "ggraph", node_color = "Ph
 d_trt = cowpea_network[["Drought"]]$plot_network(method = "ggraph", node_color = "Phylum")
 c_trt = cowpea_network[["Control"]]$plot_network(method = "ggraph", node_color = "Phylum")
 
-ggsave("drought_network.pdf", d_trt, height = 6, width = 6, dpi = 1000)
-ggsave("control_network.pdf", c_trt, height = 6, width = 6, dpi = 1000)
+ggsave("Output/PDFs/drought_network.pdf", d_trt, height = 6, width = 6, dpi = 1000)
+ggsave("Output/PDFs/control_network.pdf", c_trt, height = 6, width = 6, dpi = 1000)
 
-ggsave("ucr369_network.pdf", ucr369, height = 6, width = 6, dpi = 1000)
-ggsave("es4_network.pdf", es4, height = 6, width = 6, dpi = 1000)
+ggsave("Output/PDFs/ucr369_network.pdf", ucr369, height = 6, width = 6, dpi = 1000)
+ggsave("Output/PDFs/es4_network.pdf", es4, height = 6, width = 6, dpi = 1000)
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------
 #1.5 Comparing nodes across networks
@@ -175,6 +186,8 @@ ggsave("es4_network.pdf", es4, height = 6, width = 6, dpi = 1000)
 node_dist_trt <- node_comp(cowpea_network, property = "name")
 node_dist_gen <- node_comp(genotype_network, property = "name")
 
+node_dist_gen
+
 # obtain nodes intersection
 node_intersection_trt <- trans_venn$new(node_dist_trt, ratio = "numratio")
 node_intersection_gen <- trans_venn$new(node_dist_gen, ratio = "numratio")
@@ -182,8 +195,8 @@ node_intersection_gen <- trans_venn$new(node_dist_gen, ratio = "numratio")
 node_intersection_trt
 node_intersection_gen
 
-node_intersection_trt_plot <- node_intersection_trt$plot_venn(fill_color = FALSE)
-node_intersection_gen_plot <- node_intersection_gen$plot_venn(fill_color = FALSE)
+node_intersection_trt_plot <- node_intersection_trt$plot_venn
+node_intersection_gen_plot <- node_intersection_gen$plot_venn
 
 node_intersection_trt_plot
 node_intersection_gen_plot
@@ -210,8 +223,8 @@ cowpea_gen_edgetax = cowpea_gen_edgetax[apply(cowpea_gen_edgetax, 1, mean) > 0.0
 g1 = pheatmap::pheatmap(cowpea_trt_edgetax, display_numbers = T)
 g2 = pheatmap::pheatmap(cowpea_gen_edgetax, display_numbers = T)
 
-ggsave("trt_pheatmap.pdf", g1, height = 7, width = 7, dpi = 1000)
-ggsave("gen_pheatmap.pdf", g2, height = 7, width = 7, dpi = 1000)
+ggsave("Output/PDFs/trt_pheatmap.pdf", g1, height = 7, width = 7, dpi = 1000)
+ggsave("Output/PDFs/gen_pheatmap.pdf", g2, height = 7, width = 7, dpi = 1000)
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------
 # 1.7 Module eigengene analysis
@@ -381,25 +394,45 @@ raup = raup_crick(otu_table, reps = 999)
 as.matrix(beta_nti_matrix)[1:5, 1:5]
 write.csv(as.matrix(beta_nti_matrix), "Beta_NTI_results.csv")
 
-
-
-
-
-
 ####### Phylum level abundance figure generation #######
 
 data = read.csv("MB analyst results/Phyla-ITS.csv")
+order = read.csv("MB analyst results/Order-ITS.csv")
+class = read.csv("MB analyst results/Class-ITS.csv")
+family = read.csv("MB analyst results/Family-ITS.csv")
+genus = read.csv("MB analyst results/Genus-ITS.csv")
 
 # Convert your data from wide to long format for ggplot
 data_long <- melt(data, id.vars = c("Sample_ID", "Genotype", "Drought_Stage", "Treatment"), 
                   variable.name = "Phylum", value.name = "Abundance")
-
-
+order_long <- melt(order, id.vars = c("Sample_ID", "Genotype", "Drought_Stage", "Treatment"), 
+                  variable.name = "Order", value.name = "Abundance")
+class_long <- melt(class, id.vars = c("Sample_ID", "Genotype", "Drought_Stage", "Treatment"), 
+                   variable.name = "Class", value.name = "Abundance")
+family_long <- melt(family, id.vars = c("Sample_ID", "Genotype", "Drought_Stage", "Treatment"), 
+                   variable.name = "Family", value.name = "Abundance")
+genus_long <- melt(genus, id.vars = c("Sample_ID", "Genotype", "Drought_Stage", "Treatment"), 
+                    variable.name = "Genus", value.name = "Abundance")
 # Ensure proper ordering of factors
 data_long$Genotype <- factor(data_long$Genotype, levels = c("ES4", "UCR369")) # Adjust as needed
 data_long$Drought_Stage <- factor(data_long$Drought_Stage, levels = c("V2-Stage", "V4-Stage", "R1-Stage", "R4-Stage"))
 data_long$Treatment <- factor(data_long$Treatment, levels = c("Control", "Drought"))
 
+order_long$Genotype <- factor(order_long$Genotype, levels = c("ES4", "UCR369")) # Adjust as needed
+order_long$Drought_Stage <- factor(order_long$Drought_Stage, levels = c("V2-Stage", "V4-Stage", "R1-Stage", "R4-Stage"))
+order_long$Treatment <- factor(order_long$Treatment, levels = c("Control", "Drought"))
+
+class_long$Genotype <- factor(class_long$Genotype, levels = c("ES4", "UCR369")) # Adjust as needed
+class_long$Drought_Stage <- factor(class_long$Drought_Stage, levels = c("V2-Stage", "V4-Stage", "R1-Stage", "R4-Stage"))
+class_long$Treatment <- factor(class_long$Treatment, levels = c("Control", "Drought"))
+
+family_long$Genotype <- factor(family_long$Genotype, levels = c("ES4", "UCR369")) # Adjust as needed
+family_long$Drought_Stage <- factor(family_long$Drought_Stage, levels = c("V2-Stage", "V4-Stage", "R1-Stage", "R4-Stage"))
+family_long$Treatment <- factor(family_long$Treatment, levels = c("Control", "Drought"))
+
+genus_long$Genotype <- factor(genus_long$Genotype, levels = c("ES4", "UCR369")) # Adjust as needed
+genus_long$Drought_Stage <- factor(genus_long$Drought_Stage, levels = c("V2-Stage", "V4-Stage", "R1-Stage", "R4-Stage"))
+genus_long$Treatment <- factor(genus_long$Treatment, levels = c("Control", "Drought"))
 # Calculate the total abundance for each Phylum
 phylum_order <- data_long %>%
   group_by(Phylum) %>%
@@ -407,9 +440,36 @@ phylum_order <- data_long %>%
   arrange(desc(Total_Abundance)) %>%
   pull(Phylum)
 
+order_1 <- order_long %>%
+  group_by(Order) %>%
+  summarise(Total_Abundance = sum(Abundance, na.rm = TRUE)) %>%
+  arrange(desc(Total_Abundance)) %>%
+  pull(Order)
+
+class_1 <- class_long %>%
+  group_by(Class) %>%
+  summarise(Total_Abundance = sum(Abundance, na.rm = TRUE)) %>%
+  arrange(desc(Total_Abundance)) %>%
+  pull(Class)
+
+family_1 <- family_long %>%
+  group_by(Family) %>%
+  summarise(Total_Abundance = sum(Abundance, na.rm = TRUE)) %>%
+  arrange(desc(Total_Abundance)) %>%
+  pull(Family)
+
+genus_1 <- genus_long %>%
+  group_by(Genus) %>%
+  summarise(Total_Abundance = sum(Abundance, na.rm = TRUE)) %>%
+  arrange(desc(Total_Abundance)) %>%
+  pull(Genus)
 
 # Reorder the Phylum factor based on total abundance
 data_long$Phylum <- factor(data_long$Phylum, levels = phylum_order)
+class_long$Class <- factor(class_long$Class, levels = class_1)
+order_long$Order <- factor(order_long$Order, levels = order_1)
+family_long$Family <- factor(family_long$Family, levels = family_1)
+genus_long$Genus <- factor(genus_long$Genus, levels = genus_1)
 
 phylum_abundance = ggplot(data_long, aes(x = Treatment, y = Abundance, fill = Phylum)) +
   geom_bar(stat = "identity", position = "stack") + # Stacked bar plot
@@ -429,11 +489,48 @@ phylum_abundance = ggplot(data_long, aes(x = Treatment, y = Abundance, fill = Ph
     title = ""
   )
 
-phylum_abundance
+class_abundance = ggplot(class_long, aes(x = Treatment, y = Abundance, fill = Class)) +
+  geom_bar(stat = "identity", position = "stack") + # Stacked bar plot
+  facet_grid(Genotype ~ Drought_Stage, scales = "free", space = "free_x") + # Facet by Genotype and Stage
+  scale_fill_manual(values = its_colors_set) + # Custom colors
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10, face = "bold"),
+    axis.text.y = element_text(size = 10),
+    strip.text = element_text(size = 12, face = "bold"),
+    panel.spacing = unit(1, "lines") # Add spacing between facets
+  ) +
+  labs(
+    x = "Treatment",
+    y = "Abundance",
+    fill = "Class",
+    title = ""
+  )
 
-ggsave("Rplots/abundance_plot_phylum.pdf", plot = phylum_abundance, 
-       width = 8, height = 6, units = "in", 
+order_abundance = ggplot(order_long, aes(x = Treatment, y = Abundance, fill = Order)) +
+  geom_bar(stat = "identity", position = "stack") + # Stacked bar plot
+  facet_grid(Genotype ~ Drought_Stage, scales = "free", space = "free_x") + # Facet by Genotype and Stage
+  scale_fill_manual(values = its_colors_set) + # Custom colors
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10, face = "bold"),
+    axis.text.y = element_text(size = 10),
+    strip.text = element_text(size = 12, face = "bold"),
+    panel.spacing = unit(1, "lines") # Add spacing between facets
+  ) +
+  labs(
+    x = "Treatment",
+    y = "Abundance",
+    fill = "Order",
+    title = ""
+  )
+
+ggsave("Output/PDFs/abundance_plot_order.pdf", plot = order_abundance, 
+       width = 12, height = 6, units = "in", 
        dpi = 1000)
+
+
+
 
 #-----------------------------------------------------------------------------------------------------------------------------------
 #-----------------------------------------------------------------------------------------------------------------------------------
