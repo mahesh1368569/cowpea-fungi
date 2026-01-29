@@ -64,6 +64,9 @@ its_colors_set <- c(
   "#c66a9e","#a6b75d","#5b6dd1","#ff8f9f","#b87ec9",
   "#4fa6b7","#d4944a","#76a8dc","#8ccf9f","#e68ac3",
   "#e6a157","#64b5af","#9d84d7","#ffb55e","#6fb3d2",
+  "#b55d72","#7ccfcb","#d37f6f","#89c56f","#ce7dcf",
+  "#4fa6b7","#d4944a","#76a8dc","#8ccf9f","#e68ac3",
+  "#e6a157","#64b5af","#9d84d7","#ffb55e","#6fb3d2",
   "#b55d72","#7ccfcb","#d37f6f","#89c56f","#ce7dcf"
 )
 
@@ -553,6 +556,10 @@ as.matrix(beta_nti_matrix)[1:5, 1:5]
 write.csv(as.matrix(beta_nti_matrix), "Beta_NTI_results.csv")
 
 ####### Phylum level abundance figure generation #######
+detach("package:ggraph", unload = TRUE)
+detach("package:phyloseq", unload = TRUE)
+detach("package:plyr", unload = TRUE)
+library(dplyr)
 
 data = read.csv("MB analyst results/Phyla-ITS.csv")
 order = read.csv("MB analyst results/Order-ITS.csv")
@@ -683,8 +690,48 @@ order_abundance = ggplot(order_long, aes(x = Treatment, y = Abundance, fill = Or
     title = ""
   )
 
-ggsave("Output/PDFs/abundance_plot_order.pdf", plot = order_abundance, 
-       width = 12, height = 6, units = "in", 
+family_abundance = ggplot(family_long, aes(x = Treatment, y = Abundance, fill = Family)) +
+  geom_bar(stat = "identity", position = "stack") + # Stacked bar plot
+  facet_grid(Genotype ~ Drought_Stage, scales = "free", space = "free_x") + # Facet by Genotype and Stage
+  scale_fill_manual(values = its_colors_set) + # Custom colors
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10, face = "bold"),
+    axis.text.y = element_text(size = 10),
+    strip.text = element_text(size = 12, face = "bold"),
+    panel.spacing = unit(1, "lines") # Add spacing between facets
+  ) +
+  labs(
+    x = "Treatment",
+    y = "Abundance",
+    fill = "Family",
+    title = ""
+  )
+
+family_abundance
+
+genus_abundance = ggplot(genus_long, aes(x = Treatment, y = Abundance, fill = Genus)) +
+  geom_bar(stat = "identity", position = "stack") + # Stacked bar plot
+  facet_grid(Genotype ~ Drought_Stage, scales = "free", space = "free_x") + # Facet by Genotype and Stage
+  scale_fill_manual(values = its_colors_set) + # Custom colors
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10, face = "bold"),
+    axis.text.y = element_text(size = 10),
+    strip.text = element_text(size = 12, face = "bold"),
+    panel.spacing = unit(1, "lines") # Add spacing between facets
+  ) +
+  labs(
+    x = "Treatment",
+    y = "Abundance",
+    fill = "Genus",
+    title = ""
+  )
+
+genus_abundance
+
+ggsave("Output/PDFs/abundance_plot_genus.pdf", plot = genus_abundance, 
+       width = 15, height = 6, units = "in", 
        dpi = 1000)
 #-----------------------------------------------------------------------------------------------------------------------------------
 #-----------------------------------------------------------------------------------------------------------------------------------
