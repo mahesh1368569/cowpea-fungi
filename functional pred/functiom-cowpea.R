@@ -40,13 +40,13 @@ library(circlize)
 
 ## Importing files
 
-metad <- read.table("metadata.txt",header=TRUE,row.names=1,sep="\t",stringsAsFactors=FALSE)
+metad <- read.table("metadata-its.txt",header=TRUE,row.names=1,sep="\t",stringsAsFactors=FALSE)
 sampleData <- sample_data(metad)
 
-guild_raw = read.table("otu_table.guilds.txt",header=T,sep="\t",row.names=1)
+guild_raw = read.table("sujan_its.guilds.txt",header=T,sep="\t",row.names=1)
 
 #Load reformatted FUNGuild data into R
-FG <- read.table("otu_table.guilds.txt",header=T,sep="\t",row.names=1)
+FG <- read.table("sujan_its.guilds.txt",header=T,sep="\t",row.names=1)
 
 #Select only the column that we need
 FGotus <- select(FG, -(taxonomy:Citation.Source))
