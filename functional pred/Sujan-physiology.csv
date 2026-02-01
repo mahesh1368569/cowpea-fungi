@@ -1,4 +1,4 @@
-﻿SampleID,Genotype,Stage,Treatment,gsw,E,ChlM,NFI,Plant_Height,Node_no,pH,NAG,BG,AWCD,Polymers,Carbohydrates,Carboxylic acids,Amino acids,Amines,Phenolic acids
+﻿SampleID,Genotype,Stage,Treatment,gsw,E,ChlM,NFI,Plant_Height,Node_no,pH,NAG,BG,AWCD,Polymers,Carbohydrates,Carboxylic_acids,Amino_acids,Amines,Phenolic_acids
 P33,ES4,R1-Stage,Control,0.1893,5.563943,0.42,0.49,28,12,6.65,1.03804,2.75062,1.17549,0.58,1.35,0.89,0.92,0.57,0.98
 P34,ES4,R1-Stage,Control,0.19826,6.256705,0.48,0.46,26,11,6.43,1.03804,2.70044,1.038580645,0.62,1.53,0.86,0.8,0.76,1.14
 P39,ES4,R1-Stage,Control,0.044254,1.337436,0.72,0.68,32,12,6.39,1.03804,2.24882,1.18648,0.48,1.47,0.9,0.98,0.6,1.15
