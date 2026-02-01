@@ -98,8 +98,8 @@ mode_order <- ps_data %>%
 ps_data$Trophic.Mode <- factor(ps_data$Trophic.Mode, levels = mode_order)
 
 # Plot again with reordered Trophic.Mode
-FUNGuildcom_ordered <- ggplot(ps_data,
-                              aes(x = Treatment, y = Abundance, fill = Trophic.Mode)) +
+gen_funguid <- ggplot(ps_data,
+                              aes(x = Genotype, y = Abundance, fill = Trophic.Mode)) +
   geom_bar(stat = "identity", position = "fill") +
   ggtitle("") +
   scale_fill_manual(values = cbbPalette) +
@@ -115,11 +115,77 @@ FUNGuildcom_ordered <- ggplot(ps_data,
         panel.border = element_rect(colour = "black", fill = NA, size = 1))
 
 # Print the plot
-FUNGuildcom_ordered
+gen_funguid
 
-ggsave("Treatment_trophic.pdf", plot = FUNGuildcom_ordered, width = 7, height = 8, dpi = 1000)
-ggsave("Treatment_trophic.jpeg", plot = FUNGuildcom_ordered, width = 7, height = 8, dpi = 1000)
+treat_funguid <- ggplot(ps_data,
+                      aes(x = Treatment, y = Abundance, fill = Trophic.Mode)) +
+  geom_bar(stat = "identity", position = "fill") +
+  ggtitle("") +
+  scale_fill_manual(values = cbbPalette) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+        axis.text.y = element_text(size = 14),
+        axis.title.y = element_text(size = 14),
+        axis.title.x = element_text(size = 14),
+        legend.title = element_text(size = 14),
+        legend.position = "right",
+        legend.text = element_text(size = 14),
+        legend.key.size = unit(0.8, "cm"),
+        panel.border = element_rect(colour = "black", fill = NA, size = 1))
 
+treat_funguid
+
+ps_data$Drought_Stage <- factor(
+  ps_data$Drought_Stage,
+  levels = c("V2-Stage", "V4-Stage", "R1-Stage", "R4-Stage")
+)
+
+stage_funguid <- ggplot(ps_data,
+                        aes(x = Drought_Stage, y = Abundance, fill = Trophic.Mode)) +
+  geom_bar(stat = "identity", position = "fill") +
+  ggtitle("") +
+  scale_fill_manual(values = cbbPalette) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+        axis.text.y = element_text(size = 14),
+        axis.title.y = element_text(size = 14),
+        axis.title.x = element_text(size = 14),
+        legend.title = element_text(size = 14),
+        legend.position = "right",
+        legend.text = element_text(size = 14),
+        legend.key.size = unit(0.8, "cm"),
+        panel.border = element_rect(colour = "black", fill = NA, size = 1))
+
+stage_funguid
+
+stage_funguid_GT <- ggplot(
+  ps_data,
+  aes(x = interaction(Drought_Stage, Treatment, sep = " | "),
+      y = Abundance, fill = Trophic.Mode)
+) +
+  geom_col(position = "fill") +
+  facet_wrap(~ Genotype, nrow = 1) +
+  scale_fill_manual(values = cbbPalette) +
+  labs(x = "Stage | Treatment", y = "Abundance") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+    axis.text.y = element_text(size = 14),
+    axis.title.y = element_text(size = 14),
+    axis.title.x = element_text(size = 14),
+    legend.title = element_text(size = 14),
+    legend.position = "right",
+    legend.text = element_text(size = 14),
+    legend.key.size = unit(0.8, "cm"),
+    panel.border = element_rect(colour = "black", fill = NA, linewidth = 1),
+    panel.background = element_blank()
+  )
+
+stage_funguid_GT
+
+ggsave("stage_funguid_GT.pdf", plot = stage_funguid_GT, width = 10, height = 8, dpi = 1000)
+
+ggsave("treat_funguid.pdf", plot = treat_funguid, width = 8, height = 8, dpi = 1000)
 
 
 ##################################### pathotrophs ##############################
@@ -189,8 +255,59 @@ PT = ggplot(ps_data_top15,
 
 PT
 
-ggsave("patho.pdf", plot = PT, width = 8, height = 9, dpi = 1000)
-ggsave("patho.jpeg", plot = PT, width = 7, height = 8, dpi = 1000)
+# Step 4: Plot
+PT_geno = ggplot(ps_data_top15,
+            aes(x = Genotype, y = Abundance, fill = Taxon)) +
+  geom_bar(stat = "identity", position = "fill") +
+  ggtitle("") +
+  scale_fill_manual(values = cbbPalette) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+    axis.text.y = element_text(size = 14),
+    axis.title.y = element_text(size = 14),
+    axis.title.x = element_text(size = 14),
+    legend.title = element_text(size = 14),
+    legend.text = element_text(size = 14),
+    legend.key.size = unit(0.8, "cm"),
+    legend.position = "right",
+    panel.border = element_rect(colour = "black", fill = NA, size = 1)
+  )
+
+PT_geno
+
+ps_data_top15$Drought_Stage <- factor(
+  ps_data_top15$Drought_Stage,
+  levels = c("V2-Stage", "V4-Stage", "R1-Stage", "R4-Stage")
+)
+
+PT_geno_GT <- ggplot(
+  ps_data_top15,
+  aes(x = interaction(Drought_Stage, Treatment, sep = " | "),
+      y = Abundance, fill = Taxon)
+) +
+  geom_col(position = "fill") +
+  facet_wrap(~ Genotype, nrow = 1) +
+  scale_fill_manual(values = cbbPalette) +
+  labs(x = "Stage | Treatment", y = "Abundance") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+    axis.text.y = element_text(size = 14),
+    axis.title.y = element_text(size = 14),
+    axis.title.x = element_text(size = 14),
+    legend.title = element_text(size = 14),
+    legend.position = "right",
+    legend.text = element_text(size = 14),
+    legend.key.size = unit(0.8, "cm"),
+    panel.border = element_rect(colour = "black", fill = NA, linewidth = 1),
+    panel.background = element_blank()
+  )
+
+PT_geno_GT
+
+ggsave("PT_geno.pdf", plot = PT_geno, width = 8, height = 9, dpi = 1000)
+
 ############################################################################################################
 ########## circular plot visualization########################################################################
 
