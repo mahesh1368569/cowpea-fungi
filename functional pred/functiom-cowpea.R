@@ -308,6 +308,150 @@ PT_geno_GT
 
 ggsave("PT_geno.pdf", plot = PT_geno, width = 8, height = 9, dpi = 1000)
 
+##################################### pathotrophs ##############################
+
+
+sym <- read.table("symbiotrophs-guilds.txt",header=T,sep="\t",row.names=1)
+
+#Select only the column that we need
+symotus <- select(sym, -(taxonomy:Citation.Source))
+
+symotumat <- as(as.matrix(symotus), "matrix")
+
+symotusOTU <- otu_table(symotumat, taxa_are_rows = TRUE)
+
+symtaxmat <- select(sym, Confidence.Ranking, Taxon, Trophic.Mode, Guild, Growth.Morphology)
+
+symtaxmat <- as(as.matrix(symtaxmat),"matrix")
+
+symTAX = tax_table(symtaxmat)
+
+#Creating phyloseq object
+physeq = phyloseq(symotusOTU,symTAX,sampleData)
+
+physeq.prune = prune_taxa(taxa_sums(physeq) > 1, physeq)
+
+physeq.prune.nopossible = subset_taxa(physeq.prune, Confidence.Ranking="Highly Possible")
+
+physeq.prune.nopossible = subset_taxa(physeq.prune.nopossible, Confidence.Ranking!="-")
+
+# Melted data for plotting
+ps_data <- psmelt(physeq.prune.nopossible)
+
+# Step 1: Summarize total abundance for each genus (Taxon)
+top20_taxa <- ps_data %>%
+  group_by(Taxon) %>%
+  summarise(TotalAbundance = sum(Abundance, na.rm = TRUE)) %>%
+  arrange(desc(TotalAbundance)) %>%
+  slice(1:20) %>%
+  pull(Taxon)
+
+# Step 2: Filter main dataset to include only these top 15 genera
+ps_data_top15 <- ps_data %>%
+  filter(Taxon %in% top20_taxa)
+
+# Step 3: Optional - reorder factor levels for plotting
+ps_data_top15$Taxon <- factor(ps_data_top15$Taxon,
+                              levels = top20_taxa)
+
+# Step 4: Plot
+sym_plot = ggplot(ps_data_top15,
+            aes(x = Treatment, y = Abundance, fill = Taxon)) +
+  geom_bar(stat = "identity", position = "fill") +
+  ggtitle("") +
+  scale_fill_manual(values = cbbPalette) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+    axis.text.y = element_text(size = 14),
+    axis.title.y = element_text(size = 14),
+    axis.title.x = element_text(size = 14),
+    legend.title = element_text(size = 14),
+    legend.text = element_text(size = 14),
+    legend.key.size = unit(0.8, "cm"),
+    legend.position = "right",
+    panel.border = element_rect(colour = "black", fill = NA, size = 1)
+  )
+
+sym_plot
+
+ggsave("sym_plot.pdf", plot = sym_plot, width = 8, height = 9, dpi = 1000)
+
+# Step 4: Plot
+sym_geno = ggplot(ps_data_top15,
+                 aes(x = Genotype, y = Abundance, fill = Taxon)) +
+  geom_bar(stat = "identity", position = "fill") +
+  ggtitle("") +
+  scale_fill_manual(values = cbbPalette) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+    axis.text.y = element_text(size = 14),
+    axis.title.y = element_text(size = 14),
+    axis.title.x = element_text(size = 14),
+    legend.title = element_text(size = 14),
+    legend.text = element_text(size = 14),
+    legend.key.size = unit(0.8, "cm"),
+    legend.position = "right",
+    panel.border = element_rect(colour = "black", fill = NA, size = 1)
+  )
+
+sym_geno
+
+sym_stage = ggplot(ps_data_top15,
+                  aes(x = Drought_Stage, y = Abundance, fill = Taxon)) +
+  geom_bar(stat = "identity", position = "fill") +
+  ggtitle("") +
+  scale_fill_manual(values = cbbPalette) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+    axis.text.y = element_text(size = 14),
+    axis.title.y = element_text(size = 14),
+    axis.title.x = element_text(size = 14),
+    legend.title = element_text(size = 14),
+    legend.text = element_text(size = 14),
+    legend.key.size = unit(0.8, "cm"),
+    legend.position = "right",
+    panel.border = element_rect(colour = "black", fill = NA, size = 1)
+  )
+
+sym_stage
+
+ps_data_top15$Drought_Stage <- factor(
+  ps_data_top15$Drought_Stage,
+  levels = c("V2-Stage", "V4-Stage", "R1-Stage", "R4-Stage")
+)
+
+sym_geno_GT <- ggplot(
+  ps_data_top15,
+  aes(x = interaction(Drought_Stage, Treatment, sep = " | "),
+      y = Abundance, fill = Taxon)
+) +
+  geom_col(position = "fill") +
+  facet_wrap(~ Genotype, nrow = 1) +
+  scale_fill_manual(values = cbbPalette) +
+  labs(x = "Stage | Treatment", y = "Abundance") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+    axis.text.y = element_text(size = 14),
+    axis.title.y = element_text(size = 14),
+    axis.title.x = element_text(size = 14),
+    legend.title = element_text(size = 14),
+    legend.position = "right",
+    legend.text = element_text(size = 14),
+    legend.key.size = unit(0.8, "cm"),
+    panel.border = element_rect(colour = "black", fill = NA, linewidth = 1),
+    panel.background = element_blank()
+  )
+
+sym_geno_GT
+
+ggsave("PT_geno.pdf", plot = PT_geno, width = 8, height = 9, dpi = 1000)
+
+
+
 ############################################################################################################
 ########## circular plot visualization########################################################################
 

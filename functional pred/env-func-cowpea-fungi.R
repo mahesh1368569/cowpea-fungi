@@ -6,6 +6,8 @@ library(vegan)
 library(cluster)
 
 # integration + networks
+BiocManager::install("mixOmics")
+
 library(mixOmics)
 library(WGCNA)
 
@@ -99,6 +101,12 @@ fungi_counts <- t(otu_filt)  # samples x taxa
 fungi_clr <- log1p(fungi_counts)
 fungi_clr <- fungi_clr - rowMeans(fungi_clr)   # simple CLR-ish with log1p (works well in practice)
 
+################################################# 111111  #################################################
+
+#ANALYSIS A — Variance partitioning + dbRDA
+
+#Question: how much fungal β-diversity is explained by enzymes vs plant traits vs treatment/stage/genotype?
+
 # STEP -A1 Prepare predictor blocks (scaled numeric + model matrix for factors)
 
 # scale numeric blocks
@@ -121,7 +129,10 @@ mod <- capscale(fungi_hel ~ Z_enz + Z_plant + Z_treat, data = phys2)
 anova(mod, permutations=999)             # overall
 anova(mod, by="term", permutations=999)  # each block term
 
+################################################# 222222  #################################################
+
 # Analysis B - Mantel + Partial mantel
+#Question - Do samples that are functionally similar also have similar fungi, even after controlling treatment structure?
 # STEP - B1 - Build distance matrtices
 
 D_fungi <- vegdist(fungi_hel, method="bray")  # fungi_hel is samples x taxa
@@ -143,3 +154,63 @@ mantel(D_fungi, D_plant, permutations=999)
 mantel.partial(D_fungi, D_enz, D_meta, permutations=999)
 mantel.partial(D_fungi, D_eco, D_meta, permutations=999)
 mantel.partial(D_fungi, D_plant, D_meta, permutations=999)
+
+################################################# 3333  #################################################
+
+#ANALYSIS C — DIABLO (mixOmics) multi-block signature
+
+#Question: what fungi + enzymes + EcoPlate + plant features jointly discriminate Stage/Treatment/Group?
+
+# Step C1 - prepare blocks and outcomes
+
+X <- list(
+  fungi  = scale(fungi_clr),
+  enz    = scale(phys2[, enz_vars, drop=FALSE]),
+  ecop   = scale(phys2[, eco_vars, drop=FALSE]),
+  plant  = scale(phys2[, plant_vars, drop=FALSE])
+)
+
+Y <- phys2$Group   # or phys2$Stage, or interaction(phys2$Stage, phys2$Treatment)
+
+# Step C2 - fit DIABLO
+
+design <- matrix(0.1, ncol = length(X_use), nrow = length(X_use),
+                 dimnames = list(names(X_use), names(X_use)))
+diag(design) <- 0
+design["fungi", c("enz","ecop","plant")] <- 0.7
+design[c("enz","ecop","plant"), "fungi"] <- 0.7
+
+diablo_fit <- block.splsda(X = X_use, Y = Y_use, ncomp = 2, design = design)
+
+
+plotIndiv(diablo_fit, legend = TRUE, title = "DIABLO: samples")
+circosPlot(diablo_fit, cutoff = 0.7)
+network(diablo_fit, cutoff = 0.7)
+
+# 0) make sure phys2 has rownames that are your sample IDs
+# if your sample IDs are in a column like phys2$SampleID, do:
+# rownames(phys2) <- phys2$SampleID
+
+# 1) define a common set of samples present in ALL blocks + phys2
+common_ids <- Reduce(intersect, c(list(rownames(phys2)), lapply(X, rownames)))
+
+length(common_ids)              # how many samples remain
+setdiff(rownames(phys2), common_ids)[1:10]   # examples dropped from phys2
+lapply(X, function(m) setdiff(rownames(m), common_ids)[1:5])  # examples dropped per block
+
+# 2) choose a single ordering (I usually follow phys2)
+common_ids <- common_ids[match(common_ids, rownames(phys2))]
+common_ids <- common_ids[!is.na(common_ids)]  # safety
+
+# 3) subset/reorder phys2 and each block
+phys2_use <- phys2[common_ids, , drop = FALSE]
+X_use <- lapply(X, function(m) m[common_ids, , drop = FALSE])
+
+# 4) rebuild Y from the aligned phys2
+Y_use <- factor(phys2_use$Group)  # or Stage / interaction(...)
+names(Y_use) <- rownames(phys2_use)
+
+# 5) final sanity checks
+stopifnot(Reduce(function(a,b) identical(rownames(a), rownames(b)), X_use))
+stopifnot(all(rownames(X_use[[1]]) == names(Y_use)))
+
