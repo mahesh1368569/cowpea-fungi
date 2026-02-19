@@ -12,8 +12,14 @@ library(WGCNA)
 library(vegan)
 library(eulerr)
 library(mvabund)
+library(variancePartition)
 
 
+# make sure reformulas is installed (CRAN)
+install.packages("reformulas")
+
+# update Bioconductor packages (including variancePartition)
+BiocManager::install("variancePartition", update = TRUE, ask = FALSE)
 
 set.seed(123)
 
@@ -45,11 +51,11 @@ X_soil  <- phys[, soil_vars, drop=FALSE]
 
 ##### Importing files ########
 
-biom = import_biom("/Users/durgasmacmini/Documents/R-Git/cowpea-fungi/Input_files/sujan_its.biom")
+biom = import_biom("sujan_its.biom")
 
-metadata = import_qiime_sample_data("/Users/durgasmacmini/Documents/R-Git/cowpea-fungi/Input_files/metadata-its.txt")
+metadata = import_qiime_sample_data("metadata-its.txt")
 
-tree = read_tree("/Users/durgasmacmini/Documents/R-Git/cowpea-fungi/Input_files/rooted_tree.nwk")
+tree = read_tree("rooted_tree.nwk")
 
 rep_fasta = readDNAStringSet("/Users/durgasmacmini/Documents/R-Git/cowpea-fungi/Input_files/fun-seq.fasta", format = "fasta")
 
@@ -76,86 +82,187 @@ meta$Drought_Stage <- factor(meta$Drought_Stage)
 
 comm_hel <- decostand(comm, method = "hellinger")
 
-G <- model.matrix(~ Genotype, data = meta)[, -1, drop = FALSE]
-T <- model.matrix(~ Treatment,  data = meta)[, -1, drop = FALSE]
-C <- model.matrix(~ Drought_Stage,    data = meta)[, -1, drop = FALSE]
+# G+T+DS [a+b+c]:
+rda.all <- rda (comm_hel ~ Genotype + Drought_Stage + Treatment, data = meta)
+RsquareAdj (rda.all)
 
-# "all interactions" set (2-way + 3-way) bundled into ONE matrix
-Xfull <- model.matrix(~ Genotype * Treatment * Drought_Stage, data=meta)
-Xfull <- Xfull[, colnames(Xfull) != "(Intercept)", drop=FALSE]
+# Genotype [a+b]:
+rda.Genotype <- rda (comm_hel ~ Genotype, data = meta)
 
-main_cols <- c(colnames(model.matrix(~ Genotype, data=meta)),
-               colnames(model.matrix(~ Treatment, data=meta)),
-               colnames(model.matrix(~ Drought_Stage, data=meta)))
-main_cols <- setdiff(main_cols, "(Intercept)")
+RsquareAdj (rda.Genotype)
 
-INT <- Xfull[, !colnames(Xfull) %in% main_cols, drop=FALSE]  # interactions-only
+# Treatment [b+c]:
+rda.Treat <- rda (comm_hel ~ Treatment, data = meta)
 
-# varpart with 4 sets
-vp <- varpart(comm_hel, G, T, C, INT)
-vp
-plot(vp)
+RsquareAdj (rda.Treat)
 
-# 1) get adjusted fractions
-ind <- vp$part$indfract
-fra <- ind$Adj.R.square
-names(fra) <- rownames(ind)
+# Drought_Stage [b+c]:
+rda.Stage <- rda (comm_hel ~ Drought_Stage, data = meta)
 
-# 2) keep only the individual fractions a–o (exclude residual p)
-fra_euler <- fra[!grepl("Residuals", names(fra))]
+RsquareAdj (rda.Stage)
 
-# 3) replace negative fractions with 0 for plotting
-fra_euler[fra_euler < 0] <- 0
+varp <- varpart (comm_hel, ~ Genotype, ~ Treatment, ~ Drought_Stage, data = meta)
 
-# 4) map vegan fraction labels -> eulerr region names
-# X1=Geno, X2=Treat, X3=Stage, X4=Interactions
-rename_region <- function(x){
-  x <- sub("^\\[[a-o]\\]\\s*=\\s*", "", x)  # remove "[a] = "
-  x <- sub("\\s*\\|\\s*.*$", "", x)         # keep only left side (e.g., X1 or X1&X2)
-  x <- gsub("X1", "Genotype", x)
-  x <- gsub("X2", "Treatment", x)
-  x <- gsub("X3", "Stage", x)
-  x <- gsub("X4", "Interactions", x)
-  x
-}
+varp
 
-names(fra_euler) <- vapply(names(fra_euler), rename_region, character(1))
+plot(varp)
 
-# combine duplicates (sometimes multiple lines map to same region label)
-fra_euler <- tapply(fra_euler, names(fra_euler), sum)
-fra_euler <- as.numeric(fra_euler)
-names(fra_euler) <- names(tapply(fra_euler, names(fra_euler), sum))  # keep names
 
-# 5) Fit Euler
-fit <- euler(fra_euler)
+anova(rda(comm_hel ~ Genotype + Condition(Treatment + Drought_Stage), data=meta))
 
-# 6) Plot (nice)
-plot(fit,
-     quantities = list(type = "percent", cex = 0.9),
-     labels = list(cex = 1.1, font = 2),
-     fills = list(alpha = 0.45),
-     edges = list(lwd = 1.5))
+anova(rda(comm_hel ~ Treatment + Condition(Genotype + Drought_Stage), data=meta))
 
-# 7) Add residual text (from vp)
-resid <- fra[grepl("Residuals", names(fra))]
-mtext(sprintf("Residuals = %.3f", resid), side = 1, line = 1, adj = 1, cex = 0.9)
+anova(rda(comm_hel ~ Drought_Stage + Condition(Genotype + Treatment), data=meta))
 
+library(vegan)
 library(eulerr)
 
-# adjusted total explained by each set (from your vp output)
-# X1=G, X2=T, X3=C(Stage), X4=INT
-totals <- c(
-  Genotype     = vp$part$fract["[aeghklno] = X1", "Adj.R.square"],
-  Treatment    = vp$part$fract["[befiklmo] = X2", "Adj.R.square"],
-  Stage        = vp$part$fract["[cfgjlmno] = X3", "Adj.R.square"],
-  Interactions = vp$part$fract["[dhijkmno] = X4", "Adj.R.square"]
+# variance partitioning
+varp <- varpart(comm_hel, ~ Genotype, ~ Treatment, ~ Drought_Stage, data = meta)
+
+
+ind <- varp$part$indfract  # data.frame
+
+# helper: find the row that starts with "[a]" etc.
+get_by_tag <- function(tag){
+  rn <- rownames(ind)
+  i <- grep(paste0("^\\[", tag, "\\]"), rn)  # tag like "a", "b", ...
+  if(length(i) == 0) return(0)
+  v <- ind[i[1], "Adj.R.square"]
+  if(is.na(v) || !is.finite(v)) return(0)
+  max(as.numeric(v), 0)  # clamp negatives to 0 for Euler
+}
+
+a <- get_by_tag("a")
+b <- get_by_tag("b")
+c <- get_by_tag("c")
+d <- get_by_tag("d")
+e <- get_by_tag("e")
+f <- get_by_tag("f")
+g <- get_by_tag("g")
+h <- get_by_tag("h")
+
+eul_in <- c(
+  "Genotype" = a,
+  "Treatment" = b,
+  "Drought Stage" = c,
+  "Genotype&Treatment" = d,
+  "Genotype&Drought Stage" = f,
+  "Treatment&Drought Stage" = e,
+  "Genotype&Treatment&Drought Stage" = g
 )
 
-totals[totals < 0] <- 0
+print(ind)                 # optional: see the table
+print(round(eul_in, 6))    # should show your a,b,c as non-zero now
 
-fit_tot <- euler(totals)
-plot(fit_tot,
-     quantities = list(type="percent"),
-     fills = list(alpha=0.45),
-     edges = list(lwd=1.5))
+fit <- euler(eul_in)
 
+pdf("varpart_euler_adjR2.pdf", width = 6.5, height = 5.5)
+
+plot.new()
+
+plot(
+  fit,
+  quantities = list(fmt = function(x) sprintf("%.3f", x)),
+  fills = list(alpha = 0.5),
+  edges = list(lwd = 1),
+  main = ""
+)
+mtext(sprintf("Residual Adj.R² = %.3f", h), side = 1, line = 2)
+
+dev.off()
+
+##-----------------------rda-----------------------------------------##########
+# fraction [a]:
+rda.dose.cover <- rda (fertil.spe ~ dose + Condition (cover), data = fertil.env)
+# fraction [c]:
+rda.cover.dose <- rda (fertil.spe ~ cover + Condition (dose), data = fertil.env)
+
+anova(rda.all)
+
+anova(rda.Genotype)
+anova(rda.Treat)
+anova(rda.Stage)
+##------mvabund model-based community test (negative bionomical deviance framework-----------##########
+
+# comm_filt = the counts matrix you used (samples x OTUs)
+# meta = metadata aligned to comm_filt rows
+
+# drop zero-count samples
+keep_samp <- rowSums(comm) > 0
+comm2 <- comm[keep_samp, , drop=FALSE]
+meta2 <- meta[keep_samp, , drop=FALSE]
+
+# drop unused factor levels
+meta2$Genotype <- droplevels(factor(meta2$Genotype))
+meta2$Treatment  <- droplevels(factor(meta2$Treatment))
+meta2$Drought_Stage    <- droplevels(factor(meta2$Drought_Stage))
+
+# add prevalence filter (THIS is key)
+prev <- colSums(comm2 > 0) / nrow(comm2)
+comm2 <- comm2[, prev >= 0.10, drop=FALSE]  # try 0.15 if still unstable
+
+# confirm no zeros
+stopifnot(all(rowSums(comm2) > 0))
+stopifnot(all(colSums(comm2) > 0))
+
+library(mvabund)
+Y <- mvabund(comm2)
+
+fit_simple <- manyglm(Y ~ Genotype * Treatment * Drought_Stage,
+                      data = meta2,
+                      family = "negative.binomial")
+
+anova_simple <- anova.manyglm(fit_simple,
+                              p.uni = "none",
+                              resamp = "montecarlo",
+                              nBoot = 999)
+anova_simple
+
+
+
+
+# 1) Extract feature table and metadata
+romm <- as(otu_table(sujan_biom), "matrix")
+meta <- data.frame(phyloseq::sample_data(sujan_biom))
+
+# make sure factors are factors
+meta$Treatment     <- factor(meta$Treatment)
+meta$Drought_Stage <- factor(meta$Drought_Stage)
+meta$Genotype      <- factor(meta$Genotype)
+meta$Replication  <- factor(meta$Replication)  
+
+# 2) Filter very rare taxa (important for stability)
+keep <- rowSums(romm > 0) >= floor(0.1 * ncol(romm))   # present in ≥10% samples
+otu_f <- romm[keep, ]
+
+# 3) CLR transform with pseudocount
+otu_p <- otu_f + 0.5
+rel   <- sweep(otu_p, 2, colSums(otu_p), "/")
+clr   <- log(rel) - matrix(colMeans(log(rel)), nrow=nrow(rel), ncol=ncol(rel), byrow=FALSE)
+
+dim(clr)          # features x samples
+dim(meta)
+
+
+head(colnames(clr))
+head(rownames(meta))
+
+length(intersect(colnames(clr), rownames(meta)))
+
+# 4) Fit variance partition model
+# Example: Treatment + Stage fixed, Plot random, Batch random
+form <- ~ Treatment + Drought_Stage + Genotype
+
+form <- ~ Treatment * Drought_Stage * Genotype + (1|Replication)
+
+str(meta)
+
+vp <- fitExtractVarPartModel(clr, form, meta)
+
+vp <- sortCols(vp)
+
+vp
+
+plotVarPart(vp)         # genome-wide style summary (here: across taxa)
+plotPercentBars(vp[1:20, ])
