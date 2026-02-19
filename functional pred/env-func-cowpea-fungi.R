@@ -6,10 +6,14 @@ library(vegan)
 library(cluster)
 
 # integration + networks
-BiocManager::install("mixOmics")
 
 library(mixOmics)
 library(WGCNA)
+library(vegan)
+library(eulerr)
+library(mvabund)
+
+
 
 set.seed(123)
 
@@ -41,13 +45,13 @@ X_soil  <- phys[, soil_vars, drop=FALSE]
 
 ##### Importing files ########
 
-biom = import_biom("/Users/durgapurushothammaheshchinthalapudi/Documents/R-Git/cowpea-fungi/Input_files/sujan_its.biom")
+biom = import_biom("/Users/durgasmacmini/Documents/R-Git/cowpea-fungi/Input_files/sujan_its.biom")
 
-metadata = import_qiime_sample_data("/Users/durgapurushothammaheshchinthalapudi/Documents/R-Git/cowpea-fungi/Input_files/metadata-its.txt")
+metadata = import_qiime_sample_data("/Users/durgasmacmini/Documents/R-Git/cowpea-fungi/Input_files/metadata-its.txt")
 
-tree = read_tree("/Users/durgapurushothammaheshchinthalapudi/Documents/R-Git/cowpea-fungi/Input_files/rooted_tree.nwk")
+tree = read_tree("/Users/durgasmacmini/Documents/R-Git/cowpea-fungi/Input_files/rooted_tree.nwk")
 
-rep_fasta = readDNAStringSet("/Users/durgapurushothammaheshchinthalapudi/Documents/R-Git/cowpea-fungi/Input_files/fun-seq.fasta", format = "fasta")
+rep_fasta = readDNAStringSet("/Users/durgasmacmini/Documents/R-Git/cowpea-fungi/Input_files/fun-seq.fasta", format = "fasta")
 
 sujan_biom = merge_phyloseq(biom,  metadata, tree)
 
@@ -55,162 +59,103 @@ colnames(tax_table(sujan_biom)) <- c("Domain", "Phylum", "Class", "Order", "Fami
 
 meco_dataset <- phyloseq2meco(sujan_biom)
 
-# ---- CHANGE this object name to your ITS microeco object ----
-# its_mt <- <your_microeco_object>
+# community matrix: samples x OTUs
+comm <- t(as(otu_table(sujan_biom), "matrix"))
+meta <- data.frame(phyloseq::sample_data(sujan_biom))
 
-otu <- meco_dataset$otu_table
+class(meta)
 
-# Ensure matrix
-otu <- as.matrix(otu)
+# make sure rownames match
+stopifnot(all(rownames(comm) %in% rownames(meta)))
+meta <- meta[rownames(comm), , drop = FALSE]
 
-# Ensure orientation is taxa x samples
-# (If your samples are rows, transpose)
-if ("SampleID" %in% colnames(phys)) {
-  if (all(rownames(otu) %in% phys$SampleID) && !all(colnames(otu) %in% phys$SampleID)) {
-    otu <- t(otu)
-  }
-}
+# make factors (important)
+meta$Genotype    <- factor(meta$Genotype)
+meta$Treatment   <- factor(meta$Treatment)
+meta$Drought_Stage <- factor(meta$Drought_Stage)
 
-# Intersect samples
-common <- intersect(colnames(otu), phys$SampleID)
-length(common)
+comm_hel <- decostand(comm, method = "hellinger")
 
-# Subset and order both identically
-otu2  <- otu[, common, drop=FALSE]
-phys2 <- phys[match(common, phys$SampleID), ]
-stopifnot(all(colnames(otu2) == phys2$SampleID))
+G <- model.matrix(~ Genotype, data = meta)[, -1, drop = FALSE]
+T <- model.matrix(~ Treatment,  data = meta)[, -1, drop = FALSE]
+C <- model.matrix(~ Drought_Stage,    data = meta)[, -1, drop = FALSE]
 
-# prevalence filter: keep taxa present in >= 10% samples
-prev <- rowSums(otu2 > 0) / ncol(otu2)
-otu_filt <- otu2[prev >= 0.10, , drop=FALSE]
+# "all interactions" set (2-way + 3-way) bundled into ONE matrix
+Xfull <- model.matrix(~ Genotype * Treatment * Drought_Stage, data=meta)
+Xfull <- Xfull[, colnames(Xfull) != "(Intercept)", drop=FALSE]
 
-# optional abundance filter (tiny totals)
-tot <- rowSums(otu_filt)
-otu_filt <- otu_filt[tot >= 10, , drop=FALSE]
+main_cols <- c(colnames(model.matrix(~ Genotype, data=meta)),
+               colnames(model.matrix(~ Treatment, data=meta)),
+               colnames(model.matrix(~ Drought_Stage, data=meta)))
+main_cols <- setdiff(main_cols, "(Intercept)")
 
-dim(otu_filt)
+INT <- Xfull[, !colnames(Xfull) %in% main_cols, drop=FALSE]  # interactions-only
 
-fungi_rel <- sweep(otu_filt, 2, colSums(otu_filt), "/")
-fungi_rel[is.na(fungi_rel)] <- 0
-
-fungi_hel <- decostand(t(fungi_rel), method="hellinger") 
-# NOTE: vegan wants samples x taxa, so we transpose: t(fungi_rel) = samples x taxa
-
-# CLR on samples x taxa
-fungi_counts <- t(otu_filt)  # samples x taxa
-fungi_clr <- log1p(fungi_counts)
-fungi_clr <- fungi_clr - rowMeans(fungi_clr)   # simple CLR-ish with log1p (works well in practice)
-
-################################################# 111111  #################################################
-
-#ANALYSIS A — Variance partitioning + dbRDA
-
-#Question: how much fungal β-diversity is explained by enzymes vs plant traits vs treatment/stage/genotype?
-
-# STEP -A1 Prepare predictor blocks (scaled numeric + model matrix for factors)
-
-# scale numeric blocks
-Z_enz   <- scale(phys2[, enz_vars, drop=FALSE])
-Z_plant <- scale(phys2[, plant_vars, drop=FALSE])
-Z_eco   <- scale(phys2[, eco_vars, drop=FALSE])
-Z_soil  <- scale(phys2[, soil_vars, drop=FALSE])  # optional
-
-# treatment design matrix (factors -> dummies)
-Z_treat <- model.matrix(~ Genotype * Stage * Treatment, data = phys2)[,-1, drop=FALSE]
-
-# STEP -A2 - Variance partioning
-vp <- varpart(fungi_hel, Z_enz, Z_plant, Z_treat)
+# varpart with 4 sets
+vp <- varpart(comm_hel, G, T, C, INT)
+vp
 plot(vp)
 
-#STEP- A3 - dbRDA model + permutation tests
+# 1) get adjusted fractions
+ind <- vp$part$indfract
+fra <- ind$Adj.R.square
+names(fra) <- rownames(ind)
 
-mod <- capscale(fungi_hel ~ Z_enz + Z_plant + Z_treat, data = phys2)
+# 2) keep only the individual fractions a–o (exclude residual p)
+fra_euler <- fra[!grepl("Residuals", names(fra))]
 
-anova(mod, permutations=999)             # overall
-anova(mod, by="term", permutations=999)  # each block term
+# 3) replace negative fractions with 0 for plotting
+fra_euler[fra_euler < 0] <- 0
 
-################################################# 222222  #################################################
+# 4) map vegan fraction labels -> eulerr region names
+# X1=Geno, X2=Treat, X3=Stage, X4=Interactions
+rename_region <- function(x){
+  x <- sub("^\\[[a-o]\\]\\s*=\\s*", "", x)  # remove "[a] = "
+  x <- sub("\\s*\\|\\s*.*$", "", x)         # keep only left side (e.g., X1 or X1&X2)
+  x <- gsub("X1", "Genotype", x)
+  x <- gsub("X2", "Treatment", x)
+  x <- gsub("X3", "Stage", x)
+  x <- gsub("X4", "Interactions", x)
+  x
+}
 
-# Analysis B - Mantel + Partial mantel
-#Question - Do samples that are functionally similar also have similar fungi, even after controlling treatment structure?
-# STEP - B1 - Build distance matrtices
+names(fra_euler) <- vapply(names(fra_euler), rename_region, character(1))
 
-D_fungi <- vegdist(fungi_hel, method="bray")  # fungi_hel is samples x taxa
+# combine duplicates (sometimes multiple lines map to same region label)
+fra_euler <- tapply(fra_euler, names(fra_euler), sum)
+fra_euler <- as.numeric(fra_euler)
+names(fra_euler) <- names(tapply(fra_euler, names(fra_euler), sum))  # keep names
 
-D_enz   <- dist(scale(phys2[, enz_vars, drop=FALSE]))
-D_plant <- dist(scale(phys2[, plant_vars, drop=FALSE]))
-D_eco   <- dist(scale(phys2[, eco_vars, drop=FALSE]))
+# 5) Fit Euler
+fit <- euler(fra_euler)
 
-# Gower distance for mixed meta (controls)
-D_meta <- daisy(phys2[, c("Genotype","Stage","Treatment")], metric="gower")
+# 6) Plot (nice)
+plot(fit,
+     quantities = list(type = "percent", cex = 0.9),
+     labels = list(cex = 1.1, font = 2),
+     fills = list(alpha = 0.45),
+     edges = list(lwd = 1.5))
 
-#STEP - B2 - mantel tests
+# 7) Add residual text (from vp)
+resid <- fra[grepl("Residuals", names(fra))]
+mtext(sprintf("Residuals = %.3f", resid), side = 1, line = 1, adj = 1, cex = 0.9)
 
-mantel(D_fungi, D_enz, permutations=999)
-mantel(D_fungi, D_eco, permutations=999)
-mantel(D_fungi, D_plant, permutations=999)
+library(eulerr)
 
-# Partial Mantel (control drought/stage/genotype)
-mantel.partial(D_fungi, D_enz, D_meta, permutations=999)
-mantel.partial(D_fungi, D_eco, D_meta, permutations=999)
-mantel.partial(D_fungi, D_plant, D_meta, permutations=999)
-
-################################################# 3333  #################################################
-
-#ANALYSIS C — DIABLO (mixOmics) multi-block signature
-
-#Question: what fungi + enzymes + EcoPlate + plant features jointly discriminate Stage/Treatment/Group?
-
-# Step C1 - prepare blocks and outcomes
-
-X <- list(
-  fungi  = scale(fungi_clr),
-  enz    = scale(phys2[, enz_vars, drop=FALSE]),
-  ecop   = scale(phys2[, eco_vars, drop=FALSE]),
-  plant  = scale(phys2[, plant_vars, drop=FALSE])
+# adjusted total explained by each set (from your vp output)
+# X1=G, X2=T, X3=C(Stage), X4=INT
+totals <- c(
+  Genotype     = vp$part$fract["[aeghklno] = X1", "Adj.R.square"],
+  Treatment    = vp$part$fract["[befiklmo] = X2", "Adj.R.square"],
+  Stage        = vp$part$fract["[cfgjlmno] = X3", "Adj.R.square"],
+  Interactions = vp$part$fract["[dhijkmno] = X4", "Adj.R.square"]
 )
 
-Y <- phys2$Group   # or phys2$Stage, or interaction(phys2$Stage, phys2$Treatment)
+totals[totals < 0] <- 0
 
-# Step C2 - fit DIABLO
-
-design <- matrix(0.1, ncol = length(X_use), nrow = length(X_use),
-                 dimnames = list(names(X_use), names(X_use)))
-diag(design) <- 0
-design["fungi", c("enz","ecop","plant")] <- 0.7
-design[c("enz","ecop","plant"), "fungi"] <- 0.7
-
-diablo_fit <- block.splsda(X = X_use, Y = Y_use, ncomp = 2, design = design)
-
-
-plotIndiv(diablo_fit, legend = TRUE, title = "DIABLO: samples")
-circosPlot(diablo_fit, cutoff = 0.7)
-network(diablo_fit, cutoff = 0.7)
-
-# 0) make sure phys2 has rownames that are your sample IDs
-# if your sample IDs are in a column like phys2$SampleID, do:
-# rownames(phys2) <- phys2$SampleID
-
-# 1) define a common set of samples present in ALL blocks + phys2
-common_ids <- Reduce(intersect, c(list(rownames(phys2)), lapply(X, rownames)))
-
-length(common_ids)              # how many samples remain
-setdiff(rownames(phys2), common_ids)[1:10]   # examples dropped from phys2
-lapply(X, function(m) setdiff(rownames(m), common_ids)[1:5])  # examples dropped per block
-
-# 2) choose a single ordering (I usually follow phys2)
-common_ids <- common_ids[match(common_ids, rownames(phys2))]
-common_ids <- common_ids[!is.na(common_ids)]  # safety
-
-# 3) subset/reorder phys2 and each block
-phys2_use <- phys2[common_ids, , drop = FALSE]
-X_use <- lapply(X, function(m) m[common_ids, , drop = FALSE])
-
-# 4) rebuild Y from the aligned phys2
-Y_use <- factor(phys2_use$Group)  # or Stage / interaction(...)
-names(Y_use) <- rownames(phys2_use)
-
-# 5) final sanity checks
-stopifnot(Reduce(function(a,b) identical(rownames(a), rownames(b)), X_use))
-stopifnot(all(rownames(X_use[[1]]) == names(Y_use)))
+fit_tot <- euler(totals)
+plot(fit_tot,
+     quantities = list(type="percent"),
+     fills = list(alpha=0.45),
+     edges = list(lwd=1.5))
 
