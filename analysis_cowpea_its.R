@@ -49,6 +49,7 @@ library(nlMS)
 library(iCAMP)
 library(minpack.lm)
 library(Hmisc)
+library(Biostrings)
 
 # ---- Package manager ----
 library(BiocManager)
@@ -94,6 +95,20 @@ rownames(phyis) <- phyis[, 1]
 
 phyis = phyis[ ,-1]
 
+meco_dataset$cal_betadiv()
+# create trancal_betadiv()# create trans_beta object
+# For PCoA and NMDS, measure parameter must be provided.
+# measure parameter should be either one of names(mt_rarefied$beta_diversity) or a customized symmetric matrix
+t1 <- trans_beta$new(dataset = meco_dataset, group = "Treatment", measure = "bray")
+
+nmds = t1$cal_ordination(method = "NMDS")
+pcoa = t1$cal_ordination(method = "PCoA")
+
+beta_pcoa = pcoa[["res_ordination"]]$scores
+beta_nmds = nmds[["res_ordination"]]$scores
+
+write.csv(beta_nmds, "beta_nmds.csv")
+write.csv(beta_pcoa, "beta_pcoa.csv")
 # add_data is used to add the environmental data
 env_sujan <- trans_env$new(dataset = meco_dataset, add_data = phyis)
 
