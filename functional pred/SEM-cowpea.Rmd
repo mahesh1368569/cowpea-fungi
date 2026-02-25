@@ -1,0 +1,173 @@
+---
+title: "SEM-cowpea"
+author: "Durga Chinthalapudi"
+date: "2026-02-20"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(lavaan)
+library(semPlot)
+library(semTools)
+library(performance)
+library(lavaanPlot)
+library(dplyr)
+library(readr)
+```
+
+
+```{r}
+dat = read.csv("Sujan-physiology.csv")
+```
+
+
+```{r}
+# ---- Recode treatments / factors ----
+meta <- dat %>%
+  mutate(
+    SampleID = as.character(SampleID),
+    Genotype = str_trim(as.character(Genotype)) %>% factor(),
+    Stage    = str_trim(as.character(Stage)),
+    Treatment = str_trim(as.character(Treatment))
+  )
+```
+
+```{r}
+meta <- meta %>%
+  mutate(
+    Treatment = str_trim(as.character(Treatment)),
+    Treatment_bin = case_when(
+      str_to_lower(Treatment) %in% c("control","c") ~ 0,
+      str_to_lower(Treatment) %in% c("drought","d","stress") ~ 1,
+      TRUE ~ NA_real_
+    )
+  )
+
+meta <- meta %>%
+  mutate(
+    Stage = str_trim(as.character(Stage)),
+    # set correct order for your dataset
+    Stage = factor(Stage, levels = c("V2-Stage","V4-Stage","R1-Stage","R4-Stage"), ordered = TRUE),
+    Stage_num = as.numeric(Stage)
+  )
+
+```
+
+
+```{r}
+vars_cont <- c(
+  "pH","NAG","BG",
+  "AWCD","Polymers","Carbohydrates","Carboxylic_acids","Amino_acids","Amines","Phenolic_acids",
+  "gsw","E","ChlM","NFI","Plant_Height","Node_no",
+  "composi_pcoa","composi_nmds",
+  "diversity_shan"   # your RESPONSE
+)
+```
+
+
+
+```{r}
+sem_dat <- meta %>%
+  select(SampleID, Genotype, Stage, Stage_num, Treatment_bin, Replication, all_of(vars_cont)) %>%
+  drop_na()
+
+
+```
+
+```{r}
+sem_dat[vars_cont] <- scale(sem_dat[vars_cont])
+```
+
+```{r}
+check_collinearity(
+  lm(diversity_shan ~ pH + NAG + BG + AWCD + gsw + ChlM + composi_pcoa,
+     data = sem_dat)
+)
+```
+
+
+```{r}
+model_v2 <- paste(
+  "# Drivers of soil + plant",
+  "pH   ~ a1*Treatment_bin + a2*Stage_num + a3*Genotype",
+  "gsw  ~ g1*Treatment_bin + g2*Stage_num + g3*Genotype",
+  "ChlM ~ h1*Treatment_bin + h2*Stage_num + h3*Genotype",
+  "",
+  "# Composition is structured by experimental design (core!)",
+  "composi_pcoa ~ t1*Treatment_bin + t2*Stage_num + t3*Genotype +",
+  "              p1*pH + p2*gsw + p3*ChlM",
+  "",
+  "# Diversity",
+  "diversity_shan ~ y1*Treatment_bin + y2*Stage_num + y3*Genotype +",
+  "                 y4*pH + y5*gsw + y6*ChlM + y7*composi_pcoa",
+  "",
+  "# Residual correlations (minimal)",
+  "gsw ~~ ChlM",
+  "",
+  "# Indirect effects via composition",
+  "ind_T := t1*y7",
+  "ind_G := t3*y7",
+  "ind_S := t2*y7",
+  "tot_T := y1 + ind_T",
+  "tot_G := y3 + ind_G",
+  "tot_S := y2 + ind_S",
+  sep = "\n"
+)
+
+fit_v2 <- lavaan::sem(
+  model = model_v2,
+  data = sem_dat,
+  estimator = "MLR",
+  std.lv = TRUE,
+  missing = "fiml"
+)
+
+
+summary(fit_v2, standardized = TRUE, fit.measures = TRUE, rsquare = TRUE)
+```
+
+```{r}
+# Standardized path table
+paths_std <- standardizedSolution(fit_v2) %>%
+  dplyr::filter(op == "~") %>%
+  dplyr::select(lhs, rhs, est.std, se, z, pvalue) %>%
+  dplyr::arrange(dplyr::desc(abs(est.std)))
+
+paths_std
+
+```
+
+```{r}
+
+lavaanPlot(model = fit_v2, stand = TRUE, coefs = TRUE,
+           stars = "regress", sig = 0.05, covs = FALSE,
+           node_options = list(shape = "rectangle"),
+           edge_options = list(fontsize = 10),
+           graph_options = list(rankdir = "TB"))
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

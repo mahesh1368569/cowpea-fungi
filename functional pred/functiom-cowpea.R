@@ -37,6 +37,7 @@ library(dplyr)
 library(phyloseq)
 library(ggplot2)
 library(circlize)
+library(tidyr)
 
 ## Importing files
 
@@ -186,7 +187,7 @@ stage_funguid_GT
 ggsave("stage_funguid_GT.pdf", plot = stage_funguid_GT, width = 10, height = 8, dpi = 1000)
 
 ggsave("treat_funguid.pdf", plot = treat_funguid, width = 8, height = 8, dpi = 1000)
-
+ggsave("gen_funguid.pdf", plot = gen_funguid, width = 8, height = 8, dpi = 1000)
 
 ##################################### pathotrophs ##############################
 
@@ -471,14 +472,14 @@ rel_abund <- sweep(FGotus, 2, colSums(FGotus), "/") * 100
 rel_abund = cbind(rel_abund, FGtaxmat)
 
 otu_long <- rel_abund %>%
-  pivot_longer(cols = starts_with("S"), names_to = "SampleID", values_to = "Abundance") %>%
+  pivot_longer(cols = starts_with("P"), names_to = "SampleID", values_to = "Abundance") %>%
   filter(Abundance > 0)
 
 # Load metadata with Treatment info
-metadata <- read.table("metadata.txt", header = TRUE, sep = "\t")
+metadata <- read.table("metadata-its.txt", header = TRUE, sep = "\t")
 
 # Join treatment info
-otu_long <- left_join(otu_long, metadata, by = c("SampleID" = "SampleID"))
+otu_long <- left_join(otu_long, metadata, by = c("SampleID" = "sampleid"))
 
 
 mean_abundance <- otu_long %>%
@@ -487,7 +488,7 @@ mean_abundance <- otu_long %>%
 
 write.csv(mean_abundance, "mean-raundance-trophic.csv")
 
-mean_tps = read.csv("mean_trophs.csv", row.names = 1, check.names = F)
+mean_tps = read.csv("mean-raundance-trophic.csv", row.names = 1, check.names = F)
 
 data = as.matrix(mean_tps)
 
@@ -542,7 +543,7 @@ dev.off()
 
 horiplot = read.csv("mean-raundance-trophic.csv")
 
-col_vec <- c("Control" = "red", "Cover Crop" = "#89F336")
+col_vec <- c("Control" = "#89F336", "Drought" = "red")
 
 
 hori = ggplot(horiplot, aes(x = MeanAbundance, 
